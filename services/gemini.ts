@@ -1,14 +1,33 @@
-
 import { GoogleGenAI, Modality } from "@google/genai";
 import { AnalysisResult } from "../types";
 
 export class GeminiService {
-  async analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<AnalysisResult> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  private async getAI() {
+    // 優先從環境變數獲取 (Vercel Build-time or Node.js)
+    let apiKey = process.env.API_KEY;
     
-    // 使用 gemini-3-flash-preview 進行快速且準確的影像分析
+    // 如果環境變數為空，則嘗試從 window.aistudio 獲取 (AI Studio Runtime)
+    if (!apiKey && window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        throw new Error("請先點擊按鈕授權 API 金鑰以繼續。");
+      }
+      apiKey = process.env.API_KEY; // 授權後此變數會被自動注入
+    }
+
+    if (!apiKey) {
+      throw new Error("找不到 API 金鑰，請在 Vercel 設定中加入 API_KEY 或透過金鑰選擇器授權。");
+    }
+
+    return new GoogleGenAI({ apiKey });
+  }
+
+  async analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<AnalysisResult> {
+    const ai = await this.getAI();
+    
+    // 使用 Pro 預覽版處理高難度的多型態日文解析
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: {
         parts: [
           {
@@ -18,31 +37,27 @@ export class GeminiService {
             },
           },
           {
-            text: `請分析這張圖片中的日文內容，並嚴格遵守以下 JSON 格式回傳。
+            text: `請分析這張圖片中的日文內容，提取關鍵單字 (10-15個) 與重要的文法點，並嚴格以繁體中文與 JSON 格式回傳。
             
-            1. 提取至少 10-15 個重要的日文單字。
-            2. 如果是動詞 (verb)，必須包含 conjugations (時態變化)。
-            3. 提取重要的文法點 (grammar)。
-            4. 所有的解釋與翻譯請使用「繁體中文」。
+            1. 單字需包含漢字 (kanji)、假名 (furigana)、中文意思 (meaning)、詞性 (type: verb/noun/adjective/adverb/other)、例句 (example)、例句假名 (exampleFurigana)、例句翻譯 (exampleTranslation)。
+            2. 若單字為動詞 (verb)，請在 conjugations 欄位提供五種變化 (dictionary, masu, te, nai, ta)。
+            3. 文法需包含文法點名稱 (point)、繁體中文解釋 (explanation)、例句 (example)。
 
             JSON 結構範例：
             {
               "words": [
                 {
-                  "kanji": "單字",
-                  "furigana": "讀音",
-                  "meaning": "意思",
-                  "type": "verb|noun|adjective|adverb|other",
-                  "example": "例句",
-                  "exampleFurigana": "例句讀音",
-                  "exampleTranslation": "例句翻譯",
-                  "conjugations": {
-                    "dictionary": "辭書型", "masu": "ます型", "te": "て型", "nai": "ない型", "ta": "た型"
-                  }
+                  "kanji": "勉強",
+                  "furigana": "べんきょう",
+                  "meaning": "學習",
+                  "type": "noun",
+                  "example": "毎日日本語を勉強します。",
+                  "exampleFurigana": "まいにちにほんごをべんきょうします",
+                  "exampleTranslation": "每天學習日文。"
                 }
               ],
               "grammar": [
-                { "point": "文法", "explanation": "中文解釋", "example": "例句" }
+                { "point": "～は～です", "explanation": "基本的判斷句，...是...", "example": "私は学生です。" }
               ]
             }`,
           },
@@ -55,26 +70,25 @@ export class GeminiService {
 
     try {
       const text = response.text || '{}';
-      // 清理可能存在的 markdown 標記（預防萬一）
       const sanitized = text.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(sanitized) as AnalysisResult;
     } catch (e) {
       console.error("Gemini 解析失敗:", e, response.text);
-      throw new Error("AI 回傳格式錯誤，請再試一次。");
+      throw new Error("AI 回傳的資料格式解析失敗，請再試一次。");
     }
   }
 
   async playPronunciation(text: string) {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = await this.getAI();
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `朗讀：${text}` }] }],
+        contents: [{ parts: [{ text: `請用親切且標準的日語發音唸出這個單字：${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' },
+              prebuiltVoiceConfig: { voiceName: 'Kore' }, // 使用 Kore 作為日語推薦語音
             },
           },
         },
@@ -90,7 +104,7 @@ export class GeminiService {
         source.start();
       }
     } catch (error) {
-      console.error("發音失敗:", error);
+      console.error("發音播報失敗:", error);
     }
   }
 
