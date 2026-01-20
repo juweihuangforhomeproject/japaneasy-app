@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -20,7 +19,6 @@
         body {
             font-family: 'Noto Sans TC', 'Noto Sans JP', sans-serif;
             background-color: #f8fafc;
-            /* 防止 iOS 橡皮條效應 */
             position: fixed;
             width: 100%;
             height: 100%;
@@ -34,7 +32,22 @@
         .japanese-text {
             font-family: 'Noto Sans JP', sans-serif;
         }
-        /* 針對 iPhone 安全區域進行優化 */
+        
+        /* 閃卡 3D 效果 */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+        .preserve-3d {
+            transform-style: preserve-3d;
+        }
+        .backface-hidden {
+            backface-visibility: hidden;
+        }
+        .rotate-y-180 {
+            transform: rotateY(180deg);
+        }
+        
+        /* 針對 iOS 安全區域優化 */
         header {
             padding-top: env(safe-area-inset-top);
         }
