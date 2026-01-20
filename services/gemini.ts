@@ -2,30 +2,10 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { AnalysisResult } from "../types";
 
 export class GeminiService {
-  private async getAI() {
-    // 優先從環境變數獲取 (Vercel Build-time or Node.js)
-    let apiKey = process.env.API_KEY;
-    
-    // 如果環境變數為空，則嘗試從 window.aistudio 獲取 (AI Studio Runtime)
-    if (!apiKey && window.aistudio) {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        throw new Error("請先點擊按鈕授權 API 金鑰以繼續。");
-      }
-      apiKey = process.env.API_KEY; // 授權後此變數會被自動注入
-    }
-
-    if (!apiKey) {
-      throw new Error("找不到 API 金鑰，請在 Vercel 設定中加入 API_KEY 或透過金鑰選擇器授權。");
-    }
-
-    return new GoogleGenAI({ apiKey });
-  }
-
   async analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<AnalysisResult> {
-    const ai = await this.getAI();
+    // 每次呼叫時才建立實例，確保抓到最新的 API Key
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // 使用 Pro 預覽版處理高難度的多型態日文解析
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: {
@@ -57,7 +37,7 @@ export class GeminiService {
                 }
               ],
               "grammar": [
-                { "point": "～は～です", "explanation": "基本的判斷句，...是...", "example": "私は学生です。" }
+                { "point": "～は～です", "explanation": "基本的判斷句，...是...", "example": "私は學生です。" }
               ]
             }`,
           },
@@ -80,15 +60,15 @@ export class GeminiService {
 
   async playPronunciation(text: string) {
     try {
-      const ai = await this.getAI();
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `請用親切且標準的日語發音唸出這個單字：${text}` }] }],
+        contents: [{ parts: [{ text: `朗讀日文單字：${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' }, // 使用 Kore 作為日語推薦語音
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
             },
           },
         },
@@ -97,37 +77,28 @@ export class GeminiService {
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        const audioBuffer = await this.decodeAudioData(this.decodeBase64(base64Audio), audioContext, 24000, 1);
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        const dataInt16 = new Int16Array(bytes.buffer);
+        const frameCount = dataInt16.length;
+        const buffer = audioContext.createBuffer(1, frameCount, 24000);
+        const channelData = buffer.getChannelData(0);
+        for (let i = 0; i < frameCount; i++) {
+          channelData[i] = dataInt16[i] / 32768.0;
+        }
+
         const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
+        source.buffer = buffer;
         source.connect(audioContext.destination);
         source.start();
       }
     } catch (error) {
       console.error("發音播報失敗:", error);
     }
-  }
-
-  private decodeBase64(base64: string) {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  }
-
-  private async decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-    const dataInt16 = new Int16Array(data.buffer);
-    const frameCount = dataInt16.length / numChannels;
-    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-    for (let channel = 0; channel < numChannels; channel++) {
-      const channelData = buffer.getChannelData(channel);
-      for (let i = 0; i < frameCount; i++) {
-        channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-      }
-    }
-    return buffer;
   }
 }
 
