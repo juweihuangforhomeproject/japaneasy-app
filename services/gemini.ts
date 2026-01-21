@@ -4,8 +4,12 @@ import { AnalysisResult } from "../types";
 
 export class GeminiService {
   async analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<AnalysisResult> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("API Key is missing. Please set VITE_GEMINI_API_KEY in your environment variables.");
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
     // 使用 gemini-3-flash-preview 進行快速且準確的影像分析
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -66,7 +70,12 @@ export class GeminiService {
 
   async playPronunciation(text: string) {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
+      if (!apiKey) {
+        console.error("API Key is missing for TTS");
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: `朗讀：${text}` }] }],
