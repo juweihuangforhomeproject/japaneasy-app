@@ -4,12 +4,12 @@ import { Word, GrammarPoint, ViewState, AnalysisResult, UserProfile } from './ty
 import { gemini } from './services/gemini';
 import { db } from './services/db';
 import { supabase, supabaseService } from './services/supabase';
-import { 
-  Camera, 
-  BookOpen, 
-  Layers, 
-  BrainCircuit, 
-  Upload, 
+import {
+  Camera,
+  BookOpen,
+  Layers,
+  BrainCircuit,
+  Upload,
   Plus,
   Loader2,
   X,
@@ -82,7 +82,7 @@ const App: React.FC = () => {
       // 1. 先把本地現有的資料推送到雲端 (Upsert)，防止登入後離線資料遺失
       const localWords = await db.getAllWords();
       const localGrammar = await db.getAllGrammar();
-      
+
       await Promise.all([
         ...localWords.map(w => supabaseService.upsertWord(w)),
         ...localGrammar.map(g => supabaseService.upsertGrammar(g))
@@ -99,7 +99,7 @@ const App: React.FC = () => {
         db.bulkSaveWords(cloudWords),
         db.bulkSaveGrammar(cloudGrammar)
       ]);
-      
+
       setLibrary(cloudWords);
       setGrammarLibrary(cloudGrammar);
       setLastSaved(new Date().toLocaleTimeString());
@@ -119,7 +119,7 @@ const App: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
     setAnalyzing(true);
-    
+
     const mimeType = file.type;
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -129,7 +129,7 @@ const App: React.FC = () => {
           const result = await gemini.analyzeImage(base64, mimeType);
           setCurrentResult(result);
           const now = Date.now();
-          
+
           const newWords: Word[] = result.words.map(w => ({
             id: crypto.randomUUID(),
             kanji: w.kanji,
@@ -279,25 +279,25 @@ const App: React.FC = () => {
             {activeView === 'home' && <HomeView onUpload={handleFileUpload} library={library} currentUser={currentUser} isConfigured={isCloudConfigured} />}
             {activeView === 'library' && <LibraryView library={library} filter={libraryFilter} setFilter={setLibraryFilter} onToggleSave={toggleSaveWord} />}
             {activeView === 'flashcards' && (
-              <FlashcardView 
-                words={library.filter(w => w.isSaved)} 
-                onMastered={(id) => updateMastery(id, 'known')} 
+              <FlashcardView
+                words={library.filter(w => w.isSaved)}
+                onMastered={(id) => updateMastery(id, 'known')}
                 onFail={(id) => updateMastery(id, 'unknown')}
               />
             )}
             {activeView === 'test' && <TestView library={library} />}
             {activeView === 'grammar' && (
-              <GrammarLibraryView 
-                grammarItems={grammarLibrary} 
-                onUpdateRating={updateGrammarRating} 
+              <GrammarLibraryView
+                grammarItems={grammarLibrary}
+                onUpdateRating={updateGrammarRating}
               />
             )}
             {activeView === 'results' && currentResult && (
-              <ResultView 
-                result={currentResult} 
-                library={library} 
-                onToggleSave={toggleSaveWord} 
-                onBack={() => { setActiveView('library'); setLibraryFilter('all'); }} 
+              <ResultView
+                result={currentResult}
+                library={library}
+                onToggleSave={toggleSaveWord}
+                onBack={() => { setActiveView('library'); setLibraryFilter('all'); }}
               />
             )}
             {activeView === 'auth' && <AuthView user={currentUser} onBack={() => setActiveView('home')} onSync={() => syncWithCloud()} isSyncing={isSyncing} />}
@@ -378,13 +378,13 @@ const LibraryView = ({ library, filter, setFilter, onToggleSave }: any) => {
           {filter === 'all' ? '所有單字' : '已收藏單字'} ({filteredLibrary.length})
         </h2>
         <div className="flex bg-gray-100 p-1 rounded-xl">
-          <button 
+          <button
             onClick={() => setFilter('all')}
             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'all' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}
           >
             全部
           </button>
-          <button 
+          <button
             onClick={() => setFilter('saved')}
             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'saved' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}
           >
@@ -462,9 +462,41 @@ const ResultView = ({ result, library, onToggleSave, onBack }: any) => (
 const FlashcardView = ({ words, onMastered, onFail }: any) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+
   if (words.length === 0) return <div className="text-center py-20 px-8 bg-white rounded-3xl border border-dashed border-gray-200">請先在單字庫中收藏單字，才能進行閃卡複習</div>;
+
+  if (isCompleted) {
+    return (
+      <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-500">
+        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 shadow-lg animate-bounce">
+          <PartyPopper className="w-12 h-12" />
+        </div>
+        <div>
+          <h2 className="text-3xl font-black mb-2">複習完成！</h2>
+          <p className="text-gray-500 text-lg">太棒了！你已經複習完所有卡片。</p>
+        </div>
+        <button
+          onClick={() => { setIsCompleted(false); setCurrentIndex(0); setIsFlipped(false); }}
+          className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
+        >
+          <RotateCcw className="w-5 h-5" />
+          再複習一次
+        </button>
+      </div>
+    );
+  }
+
   const currentWord = words[currentIndex];
-  const next = () => { setIsFlipped(false); setCurrentIndex(prev => (prev + 1) % words.length); };
+  const next = () => {
+    if (currentIndex >= words.length - 1) {
+      setIsCompleted(true);
+    } else {
+      setIsFlipped(false);
+      setCurrentIndex(prev => prev + 1);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom duration-500">
       <div className="flex justify-between items-center"><h2 className="text-xl font-bold">閃卡複習</h2><span className="text-indigo-600 font-bold">{currentIndex + 1} / {words.length}</span></div>
@@ -583,7 +615,7 @@ const AuthView = ({ user, onBack, onSync, isSyncing }: { user: UserProfile | nul
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
@@ -604,7 +636,7 @@ const AuthView = ({ user, onBack, onSync, isSyncing }: { user: UserProfile | nul
   };
 
   const handleSignOut = async () => { await supabaseService.signOut(); onBack(); };
-  
+
   if (user) return (
     <div className="space-y-8 animate-in slide-in-from-right duration-300">
       <div className="flex items-center gap-4"><button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-6 h-6" /></button><h2 className="text-2xl font-bold">雲端帳號</h2></div>
@@ -612,19 +644,19 @@ const AuthView = ({ user, onBack, onSync, isSyncing }: { user: UserProfile | nul
         <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><UserIcon className="w-10 h-10" /></div>
         <h3 className="font-bold text-lg mb-1">{user.email}</h3>
         <p className="text-gray-400 text-sm mb-8">您的資料正在即時同步中</p>
-        
+
         <div className="space-y-3">
-          <button 
-            onClick={onSync} 
+          <button
+            onClick={onSync}
             disabled={isSyncing}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-indigo-50 text-indigo-600 font-bold hover:bg-indigo-100 transition-colors"
           >
             {isSyncing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
             {isSyncing ? '同步中...' : '手動觸發同步'}
           </button>
-          
-          <button 
-            onClick={handleSignOut} 
+
+          <button
+            onClick={handleSignOut}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-50 text-red-500 font-bold hover:bg-red-50 transition-colors"
           >
             <LogOut className="w-5 h-5" /> 登出帳號
