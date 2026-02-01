@@ -51,6 +51,10 @@ export class JapaneseDatabase extends Dexie {
     return await this.grammar.delete(id);
   }
 
+  async deleteWord(id: string) {
+    return await this.words.delete(id);
+  }
+
   async exportData() {
     const words = await this.words.toArray();
     const grammar = await this.grammar.toArray();

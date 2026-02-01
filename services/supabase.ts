@@ -123,5 +123,19 @@ export const supabaseService = {
       .eq('user_id', user.id);
 
     if (error) throw error;
+  },
+
+  async deleteWord(id: string) {
+    if (!supabase) return;
+    const user = await this.getCurrentUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('words')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) throw error;
   }
 };

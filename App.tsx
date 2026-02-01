@@ -6,18 +6,26 @@ import { db } from './services/db';
 import { supabase, supabaseService } from './services/supabase';
 import {
   Camera,
+  Image as ImageIcon,
   BookOpen,
+  Star,
+  RotateCcw,
+  PartyPopper,
+  Trash2,
+  Mic,
+  Volume2,
+  Upload,
+  X,
+  Search,
+  Filter,
+  ScrollText,
+  Bookmark,
+  BookmarkCheck,
   Layers,
   BrainCircuit,
-  Upload,
   Plus,
   Loader2,
-  X,
   CheckCircle2,
-  ScrollText,
-  PartyPopper,
-  RotateCcw,
-  Star,
   Download,
   Database,
   RefreshCcw,
@@ -26,10 +34,10 @@ import {
   LogOut,
   User as UserIcon,
   Mail,
-  Lock,
   Calendar,
-  Bookmark,
-  Trash2
+  Lock,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import WordCard from './components/WordCard';
 
@@ -131,7 +139,7 @@ const App: React.FC = () => {
           setCurrentResult(result);
           const now = Date.now();
 
-          const newWords: Word[] = result.words.map(w => ({
+          const newWords: Word[] = (result.words || []).map(w => ({
             id: crypto.randomUUID(),
             kanji: w.kanji,
             furigana: w.furigana,
@@ -146,7 +154,7 @@ const App: React.FC = () => {
             masteryLevel: 0
           }));
 
-          const newGrammar: GrammarPoint[] = result.grammar.map(g => ({
+          const newGrammar: GrammarPoint[] = (result.grammar || []).map(g => ({
             id: crypto.randomUUID(),
             point: g.point,
             explanation: g.explanation,
@@ -226,13 +234,32 @@ const App: React.FC = () => {
     }
   };
 
-  const updateMastery = async (id: string, direction: 'known' | 'unknown') => {
+  const handleDeleteWord = async (id: string) => {
+    if (window.confirm('確定要刪除這個單字嗎？刪除後無法復原。')) {
+      const word = library.find(w => w.id === id);
+      if (word) {
+        setLibrary(prev => prev.filter(w => w.id !== id));
+        await db.deleteWord(id);
+        if (currentUser) {
+          supabaseService.deleteWord(id).catch(e => console.error("雲端刪除失敗", e));
+        }
+      }
+    }
+  };
+
+  const updateMastery = async (id: string, direction: 'known' | 'unknown' | 'too_hard') => {
     const word = library.find(w => w.id === id);
     if (word) {
-      const level = direction === 'known' ? 2 : 1;
-      const updatedWord = { ...word, masteryLevel: level };
+      let level = 1; // Default: unknown / learning
+      if (direction === 'known') level = 2;
+      if (direction === 'too_hard') level = 3;
+
+      // Keep bookmark status even if mastered
+      const isSaved = word.isSaved;
+
+      const updatedWord = { ...word, masteryLevel: level, isSaved };
       setLibrary(prev => prev.map(w => w.id === id ? updatedWord : w));
-      await db.updateWord(id, { masteryLevel: level });
+      await db.updateWord(id, { masteryLevel: level, isSaved });
       if (currentUser) {
         supabaseService.upsertWord(updatedWord).catch(e => console.error("雲端同步失敗", e));
       }
@@ -290,16 +317,17 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {activeView === 'home' && <HomeView onUpload={handleFileUpload} library={library} currentUser={currentUser} isConfigured={isCloudConfigured} />}
-            {activeView === 'library' && <LibraryView library={library} filter={libraryFilter} setFilter={setLibraryFilter} onToggleSave={toggleSaveWord} />}
+            {activeView === 'home' && <HomeView onUpload={handleFileUpload} library={library} currentUser={currentUser} isConfigured={isCloudConfigured} onAuth={() => setActiveView('auth')} />}
+            {activeView === 'library' && <LibraryView library={library} filter={libraryFilter} setFilter={setLibraryFilter} onToggleSave={toggleSaveWord} onDelete={handleDeleteWord} />}
             {activeView === 'flashcards' && (
               <FlashcardView
-                words={library.filter(w => w.isSaved)}
-                onMastered={(id) => updateMastery(id, 'known')}
-                onFail={(id) => updateMastery(id, 'unknown')}
+                library={library}
+                onMastered={(id: string) => updateMastery(id, 'known')}
+                onFail={(id: string) => updateMastery(id, 'unknown')}
+                onTooHard={(id: string) => updateMastery(id, 'too_hard')}
               />
             )}
-            {activeView === 'test' && <TestView library={library} />}
+            {activeView === 'test' && <ResultsView library={library} />}
             {activeView === 'grammar' && (
               <GrammarLibraryView
                 grammarItems={grammarLibrary}
@@ -330,7 +358,7 @@ const App: React.FC = () => {
           </label>
         </div>
         <NavItem icon={<ScrollText />} label="文法" active={activeView === 'grammar'} onClick={() => setActiveView('grammar')} />
-        <NavItem icon={<CheckCircle2 />} label="測驗" active={activeView === 'test'} onClick={() => setActiveView('test')} />
+        <NavItem icon={<PartyPopper />} label="成果" active={activeView === 'test'} onClick={() => setActiveView('test')} />
       </nav>
     </div>
   );
@@ -343,7 +371,7 @@ const NavItem = ({ icon, label, active, onClick }: any) => (
   </button>
 );
 
-const HomeView = ({ onUpload, library, currentUser, isConfigured }: any) => {
+const HomeView = ({ onUpload, library, currentUser, isConfigured, onAuth }: any) => {
   const masteredCount = library.filter((w: any) => w.masteryLevel === 2).length;
   const masteryPercent = library.length > 0 ? Math.round((masteredCount / library.length) * 100) : 0;
   return (
@@ -352,7 +380,7 @@ const HomeView = ({ onUpload, library, currentUser, isConfigured }: any) => {
         <div className="absolute top-0 right-0 p-4 opacity-10"><Database className="w-40 h-40 rotate-12" /></div>
         <h2 className="text-2xl font-black mb-2 relative z-10 leading-tight">你好呀！<br />準備好學習了嗎？</h2>
         <p className="text-indigo-100 opacity-90 mb-8 text-sm relative z-10 font-medium">
-          {!isConfigured ? "請依照指示設定 Supabase 金鑰以啟用同步。" : currentUser ? `已登入：${currentUser.email}` : "登入後即可在不同裝置同步單字。"}
+          {!isConfigured ? "請依照指示設定 Supabase 金鑰以啟用同步。" : currentUser ? `已登入：${currentUser.email}` : <button onClick={onAuth} className="underline hover:text-white transition-colors">點此登入雲端</button>}
         </p>
         <div className="grid grid-cols-2 gap-4 relative z-10">
           <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-5 border border-white/20">
@@ -380,7 +408,7 @@ const HomeView = ({ onUpload, library, currentUser, isConfigured }: any) => {
   );
 };
 
-const LibraryView = ({ library, filter, setFilter, onToggleSave }: any) => {
+const LibraryView = ({ library, filter, setFilter, onToggleSave, onDelete }: any) => {
   const filteredLibrary = useMemo(() => {
     return filter === 'all' ? library : library.filter((w: any) => w.isSaved);
   }, [library, filter]);
@@ -409,7 +437,7 @@ const LibraryView = ({ library, filter, setFilter, onToggleSave }: any) => {
       </div>
       <div className="grid gap-4">
         {filteredLibrary.map((word: Word) => (
-          <WordCard key={word.id} word={word} onToggleSave={onToggleSave} />
+          <WordCard key={word.id} word={word} onToggleSave={onToggleSave} onDelete={onDelete} />
         ))}
         {filteredLibrary.length === 0 && (
           <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
@@ -421,42 +449,78 @@ const LibraryView = ({ library, filter, setFilter, onToggleSave }: any) => {
   );
 };
 
-const GrammarLibraryView = ({ grammarItems, onUpdateRating, onDelete }: any) => (
-  <div className="space-y-6 animate-in fade-in duration-500">
-    <h2 className="text-xl font-bold flex items-center gap-2">
-      <ScrollText className="w-6 h-6 text-indigo-600" />
-      語法重點 ({grammarItems.length})
-    </h2>
-    <div className="grid gap-4">
-      {grammarItems.map((item: any) => (
-        <div key={item.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 group relative">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-lg font-bold text-indigo-600 japanese-text pr-8">{item.point}</h3>
-            <div className="flex gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button key={star} onClick={() => onUpdateRating(item.id, star)}>
-                  <Star className={`w-4 h-4 ${star <= item.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
+const GrammarLibraryView = ({ grammarItems, onUpdateRating, onDelete }: any) => {
+  const [filter, setFilter] = useState<'all' | 'saved'>('all');
+
+  const filteredItems = useMemo(() => {
+    return filter === 'all' ? grammarItems : grammarItems.filter((g: any) => g.rating > 0);
+  }, [grammarItems, filter]);
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <ScrollText className="w-6 h-6 text-indigo-600" />
+          語法重點 ({filteredItems.length})
+        </h2>
+        <div className="flex bg-gray-100 p-1 rounded-xl">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'all' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}
+          >
+            全部
+          </button>
+          <button
+            onClick={() => setFilter('saved')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'saved' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}
+          >
+            已收藏
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+        {filteredItems.map((item: any) => (
+          <div key={item.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 group relative">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-lg font-bold text-indigo-600 japanese-text pr-8">{item.point}</h3>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => onDelete(item.id)}
+                  className="p-2 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                  title="刪除"
+                >
+                  <Trash2 className="w-5 h-5" />
                 </button>
-              ))}
+                <button
+                  onClick={() => onUpdateRating(item.id, item.rating > 0 ? 0 : 1)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  {item.rating > 0 ? (
+                    <BookmarkCheck className="w-6 h-6 text-yellow-500 fill-yellow-500" />
+                  ) : (
+                    <Bookmark className="w-6 h-6 text-gray-300" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <p className="text-gray-700 text-sm leading-relaxed mb-4 bg-gray-50 p-4 rounded-xl">{item.explanation}</p>
+            <div className="border-t border-gray-50 pt-4">
+              <p className="text-[10px] uppercase font-bold text-gray-400 mb-1 tracking-widest">範例</p>
+              <p className="japanese-text text-gray-800 font-medium">{item.example}</p>
             </div>
           </div>
-          <button
-            onClick={() => onDelete(item.id)}
-            className="absolute top-6 right-2 p-2 bg-gray-50 text-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:text-red-500"
-            title="刪除"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-          <p className="text-gray-700 text-sm leading-relaxed mb-4 bg-gray-50 p-4 rounded-xl">{item.explanation}</p>
-          <div className="border-t border-gray-50 pt-4">
-            <p className="text-[10px] uppercase font-bold text-gray-400 mb-1 tracking-widest">範例</p>
-            <p className="japanese-text text-gray-800 font-medium">{item.example}</p>
+        ))}
+        {filteredItems.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
+            <p className="text-gray-400">{filter === 'all' ? '目前還沒有語法重點，快去掃描吧！' : '目前沒有收藏的語法重點'}</p>
           </div>
-        </div>
-      ))}
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ResultView = ({ result, library, onToggleSave, onBack }: any) => (
   <div className="space-y-8 animate-in slide-in-from-right duration-500">
@@ -481,152 +545,288 @@ const ResultView = ({ result, library, onToggleSave, onBack }: any) => (
   </div>
 );
 
-const FlashcardView = ({ words, onMastered, onFail }: any) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
+import FlashcardSession from './components/FlashcardSession';
 
-  if (words.length === 0) return <div className="text-center py-20 px-8 bg-white rounded-3xl border border-dashed border-gray-200">請先在單字庫中收藏單字，才能進行閃卡複習</div>;
+const FlashcardView = ({ library, onMastered, onFail, onTooHard }: any) => {
+  const [filter, setFilter] = useState<'saved' | 'new' | 'too_hard' | 'learning' | 'mastered' | null>(null);
 
-  if (isCompleted) {
+  // Compute counts for the selection screen
+  const counts = useMemo(() => ({
+    saved: library.filter((w: any) => w.isSaved).length,
+    new: library.filter((w: any) => w.isSaved && w.masteryLevel === 0).length,
+    too_hard: library.filter((w: any) => w.isSaved && w.masteryLevel === 3).length,
+    learning: library.filter((w: any) => w.isSaved && w.masteryLevel === 1).length,
+    mastered: library.filter((w: any) => w.isSaved && w.masteryLevel === 2).length,
+  }), [library]);
+
+  const words = useMemo(() => {
+    if (!filter) return [];
+    if (filter === 'saved') return library.filter((w: any) => w.isSaved);
+    if (filter === 'new') return library.filter((w: any) => w.isSaved && w.masteryLevel === 0);
+    if (filter === 'too_hard') return library.filter((w: any) => w.isSaved && w.masteryLevel === 3);
+    if (filter === 'learning') return library.filter((w: any) => w.isSaved && w.masteryLevel === 1);
+    if (filter === 'mastered') return library.filter((w: any) => w.isSaved && w.masteryLevel === 2);
+    return [];
+  }, [library, filter]);
+
+  // View: Selection Screen (Initial State)
+  if (!filter) {
     return (
-      <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-500">
-        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 shadow-lg animate-bounce">
-          <PartyPopper className="w-12 h-12" />
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <h2 className="text-2xl font-black text-gray-900 mb-6">你要複習哪一類？</h2>
+        <div className="grid grid-cols-1 gap-4">
+          <button
+            onClick={() => setFilter('saved')}
+            className="group relative p-6 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-between overflow-hidden"
+          >
+            <div className="relative z-10 flex flex-col items-start">
+              <span className="text-3xl font-black">{counts.saved}</span>
+              <span className="text-sm font-bold opacity-80">全部單字</span>
+            </div>
+            <Layers className="w-12 h-12 opacity-20 absolute right-4 bottom-4 group-hover:scale-125 transition-transform" />
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center relative z-10"><ChevronRight className="w-5 h-5 text-white" /></div>
+          </button>
+
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { id: 'new', label: '新單字', count: counts.new, icon: Star, color: 'bg-orange-50 text-orange-600', hover: 'hover:bg-orange-100' },
+              { id: 'mastered', label: '已記住', count: counts.mastered, icon: CheckCircle2, color: 'bg-green-50 text-green-600', hover: 'hover:bg-green-100' },
+              { id: 'learning', label: '還不熟', count: counts.learning, icon: BrainCircuit, color: 'bg-indigo-50 text-indigo-600', hover: 'hover:bg-indigo-100' },
+              { id: 'too_hard', label: '太難了', count: counts.too_hard, icon: CloudAlert, color: 'bg-red-50 text-red-600', hover: 'hover:bg-red-100' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setFilter(item.id as any)}
+                className={`p-5 rounded-3xl transition-all active:scale-95 flex flex-col items-start gap-3 shadow-sm border border-transparent hover:border-black/5 ${item.color} ${item.hover}`}
+              >
+                <item.icon className="w-6 h-6" />
+                <div>
+                  <span className="text-2xl font-black block">{item.count}</span>
+                  <span className="text-xs font-bold opacity-70">{item.label}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
-        <div>
-          <h2 className="text-3xl font-black mb-2">複習完成！</h2>
-          <p className="text-gray-500 text-lg">太棒了！你已經複習完所有卡片。</p>
-        </div>
-        <button
-          onClick={() => { setIsCompleted(false); setCurrentIndex(0); setIsFlipped(false); }}
-          className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
-        >
-          <RotateCcw className="w-5 h-5" />
-          再複習一次
-        </button>
       </div>
     );
   }
 
-  const currentWord = words[currentIndex];
-  const next = () => {
-    if (currentIndex >= words.length - 1) {
-      setIsCompleted(true);
-    } else {
-      setIsFlipped(false);
-      setCurrentIndex(prev => prev + 1);
+  // View: Empty State for Filter
+  if (words.length === 0) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex justify-between items-center">
+          <button onClick={() => setFilter(null)} className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-500"><ChevronLeft className="w-6 h-6" /></button>
+          <h2 className="text-xl font-bold">閃卡複習</h2>
+          <div className="w-10"></div>{/* Spacer */}
+        </div>
+        <div className="text-center py-24 px-8 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-100 flex flex-col items-center justify-center">
+          <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-gray-300">
+            <Layers className="w-8 h-8" />
+          </div>
+          <p className="text-gray-900 font-bold mb-1">找不到相關單字</p>
+          <p className="text-gray-400 text-sm mb-6">這個分類目前是空的</p>
+          <button onClick={() => setFilter(null)} className="px-6 py-3 bg-indigo-50 text-indigo-600 font-bold rounded-xl text-sm hover:bg-indigo-100 transition-colors">
+            選擇其他分類
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const getFilterName = (f: string) => {
+    switch (f) {
+      case 'saved': return '全部待背';
+      case 'new': return '新單字';
+      case 'too_hard': return '太難了';
+      case 'learning': return '還不熟';
+      case 'mastered': return '已記住';
+      default: return '複習';
     }
   };
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom duration-500">
-      <div className="flex justify-between items-center"><h2 className="text-xl font-bold">閃卡複習</h2><span className="text-indigo-600 font-bold">{currentIndex + 1} / {words.length}</span></div>
-      <div onClick={() => setIsFlipped(!isFlipped)} className="h-80 w-full relative cursor-pointer">
-        <div className={`w-full h-full transition-all duration-500 bg-white rounded-[2.5rem] p-8 shadow-xl border border-gray-100 flex flex-col items-center justify-center ${isFlipped ? 'bg-indigo-600 text-white' : 'text-indigo-900'}`}>
-          {!isFlipped ? (
-            <>
-              <h3 className="text-4xl font-black japanese-text text-center">{currentWord.kanji}</h3>
-              <p className="mt-4 text-xs opacity-40">點擊翻面</p>
-            </>
-          ) : (
-            <div className="text-center">
-              <p className="text-indigo-200 japanese-text mb-2">【{currentWord.furigana}】</p>
-              <h3 className="text-3xl font-bold mb-4">{currentWord.meaning}</h3>
-              <p className="text-indigo-100 text-sm px-4">{currentWord.example}</p>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <button onClick={() => { onFail(currentWord.id); next(); }} className="py-4 rounded-2xl bg-white border border-gray-100 text-gray-500 font-bold shadow-sm active:scale-95 transition-all">還不熟</button>
-        <button onClick={() => { onMastered(currentWord.id); next(); }} className="py-4 rounded-2xl bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-100 active:scale-95 transition-all">記住了</button>
-      </div>
-    </div>
+    <FlashcardSession
+      key={filter} // Key forces remount on filter change, resetting index
+      words={words}
+      onMastered={onMastered}
+      onFail={onFail}
+      onTooHard={onTooHard}
+      onBack={() => setFilter(null)}
+      filterName={getFilterName(filter)}
+    />
   );
 };
 
-const TestView = ({ library }: any) => {
-  const [started, setStarted] = useState(false);
-  const [score, setScore] = useState(0);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [range, setRange] = useState<'all' | '7days' | '30days'>('all');
-  const [source, setSource] = useState<'all' | 'saved'>('all');
+const ResultsView = ({ library }: any) => {
+  const [filter, setFilter] = useState<'all' | 'mastered' | 'learning' | 'too_hard'>('all');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
+  const [isFlipped, setIsFlipped] = useState(false);
 
-  const testWords = useMemo(() => {
-    if (!started) return [];
-    let pool = source === 'all' ? [...library] : library.filter((w: any) => w.isSaved);
-    const now = Date.now();
-    if (range === '7days') pool = pool.filter(w => now - w.addedAt < 7 * 24 * 60 * 60 * 1000);
-    if (range === '30days') pool = pool.filter(w => now - w.addedAt < 30 * 24 * 60 * 60 * 1000);
-    return pool.sort(() => Math.random() - 0.5).slice(0, 15);
-  }, [library, started, range, source]);
+  const filteredLibrary = useMemo(() => {
+    let result = library;
 
-  const currentWord = testWords[currentIndex];
-  const options = useMemo(() => {
-    if (!currentWord) return [];
-    const others = library.filter((w: any) => w.id !== currentWord.id).sort(() => Math.random() - 0.5).slice(0, 3).map((w: any) => w.meaning);
-    return [...others, currentWord.meaning].sort(() => Math.random() - 0.5);
-  }, [currentIndex, testWords, library]);
+    // Filter by mastery level
+    if (filter === 'mastered') result = library.filter((w: any) => w.masteryLevel === 2);
+    else if (filter === 'learning') result = library.filter((w: any) => w.masteryLevel === 1);
+    else if (filter === 'too_hard') result = library.filter((w: any) => w.masteryLevel === 3);
 
-  const handleAnswer = (answer: string) => {
-    if (answer === testWords[currentIndex].meaning) setScore(score + 1);
-    if (currentIndex + 1 < testWords.length) setCurrentIndex(currentIndex + 1);
-    else setIsGameOver(true);
+    // Sort by date
+    return result.sort((a: any, b: any) => {
+      return sortOrder === 'newest' ? b.addedAt - a.addedAt : a.addedAt - b.addedAt;
+    });
+  }, [library, filter, sortOrder]);
+
+  useEffect(() => {
+    setIsFlipped(false);
+  }, [selectedWordIndex]);
+
+  const getStatusBadge = (level: number) => {
+    if (level === 2) return <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-[10px] font-bold">記住了</span>;
+    if (level === 3) return <span className="bg-red-100 text-red-700 px-2 py-1 rounded-lg text-[10px] font-bold">太難了</span>;
+    if (level === 1) return <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-lg text-[10px] font-bold">還不熟</span>;
+    return <span className="bg-gray-50 text-gray-400 px-2 py-1 rounded-lg text-[10px] font-bold">新單字</span>;
   };
 
-  if (!started) return (
-    <div className="h-[70vh] flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
-      <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600"><CheckCircle2 className="w-10 h-10" /></div>
-      <div className="text-center">
-        <h2 className="text-2xl font-black mb-2">測驗設定</h2>
-        <p className="text-gray-400 text-sm">每次測驗包含最多 15 個單字</p>
-      </div>
-      <div className="w-full space-y-4">
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><Calendar className="w-3.5 h-3.5" /> 範圍</p>
-          <div className="grid grid-cols-3 gap-2">
-            {(['all', '7days', '30days'] as const).map(r => (
-              <button key={r} onClick={() => setRange(r)} className={`py-3 rounded-xl text-xs font-bold transition-all border ${range === r ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-400 border-gray-100'}`}>
-                {r === 'all' ? '全部' : r === '7days' ? '最近 7 天' : '最近 30 天'}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><Bookmark className="w-3.5 h-3.5" /> 類型</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(['all', 'saved'] as const).map(s => (
-              <button key={s} onClick={() => setSource(s)} className={`py-3 rounded-xl text-xs font-bold transition-all border ${source === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-400 border-gray-100'}`}>
-                {s === 'all' ? '所有單字' : '只考收藏'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      <button onClick={() => setStarted(true)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">開始測驗</button>
-    </div>
-  );
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (selectedWordIndex !== null && selectedWordIndex < filteredLibrary.length - 1) {
+      setSelectedWordIndex(selectedWordIndex + 1);
+    }
+  };
 
-  if (isGameOver) return (
-    <div className="h-[70vh] flex flex-col items-center justify-center text-center space-y-8">
-      <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600 shadow-lg animate-bounce"><Star className="w-12 h-12 fill-yellow-600" /></div>
-      <div>
-        <h2 className="text-4xl font-black mb-2">測驗結束！</h2>
-        <p className="text-gray-500 text-lg">答對數：<span className="text-indigo-600 font-black">{score} / {testWords.length}</span></p>
-      </div>
-      <button onClick={() => { setStarted(false); setScore(0); setCurrentIndex(0); setIsGameOver(false); }} className="px-12 py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-xl active:scale-95 transition-all">再考一次</button>
-    </div>
-  );
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (selectedWordIndex !== null && selectedWordIndex > 0) {
+      setSelectedWordIndex(selectedWordIndex - 1);
+    }
+  };
+
+  // Calculate counts for filters
+  const counts = {
+    all: library.length,
+    mastered: library.filter((w: any) => w.masteryLevel === 2).length,
+    learning: library.filter((w: any) => w.masteryLevel === 1).length,
+    too_hard: library.filter((w: any) => w.masteryLevel === 3).length
+  };
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-right duration-500">
-      <div className="flex justify-between items-center"><h2 className="text-xl font-bold">單字挑戰</h2><span className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-bold">{currentIndex + 1} / {testWords.length}</span></div>
-      <div className="bg-white rounded-[2.5rem] p-12 shadow-xl border border-gray-100 text-center"><h3 className="text-5xl font-black japanese-text text-indigo-900">{currentWord.kanji}</h3></div>
-      <div className="grid gap-3">
-        {options.map((opt, i) => <button key={i} onClick={() => handleAnswer(opt)} className="w-full text-left p-5 rounded-2xl bg-white border border-gray-100 hover:bg-indigo-50 hover:border-indigo-300 transition-all font-medium text-gray-700 active:scale-95">{opt}</button>)}
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <PartyPopper className="w-6 h-6 text-indigo-600" />
+          學習成果 ({filteredLibrary.length})
+        </h2>
+        <button onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')} className="text-xs font-bold text-gray-400 hover:text-indigo-600 flex items-center gap-1">
+          <Calendar className="w-3 h-3" />
+          {sortOrder === 'newest' ? '最新優先' : '舊的優先'}
+        </button>
       </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+        {[
+          { id: 'all', label: `全部 (${counts.all})` },
+          { id: 'mastered', label: `記住了 (${counts.mastered})`, color: 'bg-indigo-50 text-indigo-600' },
+          { id: 'learning', label: `還不熟 (${counts.learning})`, color: 'bg-gray-50 text-gray-600' },
+          { id: 'too_hard', label: `太難了 (${counts.too_hard})`, color: 'bg-red-50 text-red-600' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => { setFilter(tab.id as any); setSelectedWordIndex(null); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${filter === tab.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : tab.color || 'bg-white border border-gray-100 text-gray-400'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-3 pb-20">
+        {filteredLibrary.map((word: Word, index: number) => (
+          <div
+            key={word.id}
+            onClick={() => setSelectedWordIndex(index)}
+            className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm cursor-pointer hover:border-indigo-200 hover:bg-indigo-50/30 transition-all active:scale-95"
+          >
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-black text-lg japanese-text">{word.kanji}</h3>
+                {getStatusBadge(word.masteryLevel)}
+              </div>
+              <p className="text-xs text-gray-400">{word.meaning} · {word.furigana}</p>
+            </div>
+            <div className="text-[10px] font-bold text-gray-300">
+              {new Date(word.addedAt).toLocaleDateString()}
+            </div>
+          </div>
+        ))}
+        {filteredLibrary.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
+            <p className="text-gray-400">沒有符合條件的單字</p>
+          </div>
+        )}
+      </div>
+
+      {selectedWordIndex !== null && filteredLibrary[selectedWordIndex] && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white rounded-[2.5rem] p-6 shadow-2xl relative flex flex-col items-center">
+            <button
+              onClick={() => setSelectedWordIndex(null)}
+              className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors z-10"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+
+            <div onClick={() => setIsFlipped(!isFlipped)} className="w-full h-80 relative cursor-pointer perspective-1000 mt-6 mb-4">
+              <div className={`w-full h-full transition-all duration-500 bg-white rounded-[2rem] border-2 border-indigo-50 flex flex-col items-center justify-center ${isFlipped ? 'bg-indigo-50' : ''}`}>
+                {!isFlipped ? (
+                  <>
+                    <h3 className="text-4xl font-black japanese-text text-center text-gray-900">{filteredLibrary[selectedWordIndex].kanji}</h3>
+                    <p className="mt-4 text-xs text-indigo-400 font-bold uppercase tracking-widest">點擊翻面</p>
+                  </>
+                ) : (
+                  <div className="text-center w-full max-h-full overflow-y-auto px-4 custom-scrollbar">
+                    <h3 className="text-2xl font-black japanese-text mb-1 text-gray-900">{filteredLibrary[selectedWordIndex].kanji}</h3>
+                    <p className="text-indigo-600 japanese-text mb-4 text-sm font-medium">【{filteredLibrary[selectedWordIndex].furigana}】</p>
+                    <h3 className="text-xl font-bold mb-4 bg-white py-2 rounded-xl text-gray-900 shadow-sm border border-gray-100">{filteredLibrary[selectedWordIndex].meaning}</h3>
+                    <p className="text-gray-700 text-sm mb-2 font-medium">{filteredLibrary[selectedWordIndex].example}</p>
+                    {filteredLibrary[selectedWordIndex].type === 'verb' && filteredLibrary[selectedWordIndex].conjugations && (
+                      <div className="bg-white rounded-xl p-2 text-xs mt-2 border border-blue-100">
+                        <p className="text-[10px] text-indigo-400 font-bold mb-1">動詞變化</p>
+                        <div className="grid grid-cols-2 gap-1 text-left">
+                          <span>ます: {filteredLibrary[selectedWordIndex].conjugations.masu}</span>
+                          <span>て: {filteredLibrary[selectedWordIndex].conjugations.te}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between w-full px-4 pt-2">
+              <button
+                onClick={handlePrev}
+                disabled={selectedWordIndex === 0}
+                className="p-3 rounded-xl bg-gray-100 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-indigo-100 hover:text-indigo-600 transition-all active:scale-95"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <span className="font-bold text-gray-400 text-sm">
+                {selectedWordIndex + 1} / {filteredLibrary.length}
+              </span>
+              <button
+                onClick={handleNext}
+                disabled={selectedWordIndex === filteredLibrary.length - 1}
+                className="p-3 rounded-xl bg-gray-100 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-indigo-100 hover:text-indigo-600 transition-all active:scale-95"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,16 +1,17 @@
 
 import React from 'react';
 import { Word } from '../types';
-import { Volume2, Bookmark, BookmarkCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Volume2, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { gemini } from '../services/gemini';
 
 interface WordCardProps {
   word: Word;
   onToggleSave: (id: string) => void;
+  onDelete?: (id: string) => void;
   showConjugationsDefault?: boolean;
 }
 
-const WordCard: React.FC<WordCardProps> = ({ word, onToggleSave, showConjugationsDefault = false }) => {
+const WordCard: React.FC<WordCardProps> = ({ word, onToggleSave, onDelete, showConjugationsDefault = false }) => {
   const [expanded, setExpanded] = React.useState(showConjugationsDefault);
 
   const playAudio = (e: React.MouseEvent) => {
@@ -27,7 +28,7 @@ const WordCard: React.FC<WordCardProps> = ({ word, onToggleSave, showConjugation
           </span>
           <div className="flex items-center gap-2">
             <h3 className="text-2xl font-bold japanese-text">{word.kanji}</h3>
-            <button 
+            <button
               onClick={playAudio}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
             >
@@ -37,16 +38,27 @@ const WordCard: React.FC<WordCardProps> = ({ word, onToggleSave, showConjugation
           <p className="text-sm text-gray-500 japanese-text mb-2">【{word.furigana}】</p>
           <p className="text-lg text-gray-800 font-medium">{word.meaning}</p>
         </div>
-        <button 
-          onClick={() => onToggleSave(word.id)}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-        >
-          {word.isSaved ? (
-            <BookmarkCheck className="w-6 h-6 text-yellow-500 fill-yellow-500" />
-          ) : (
-            <Bookmark className="w-6 h-6 text-gray-300" />
+        <div className="flex gap-1">
+          {onDelete && (
+            <button
+              onClick={() => onDelete(word.id)}
+              className="p-2 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-full transition-colors order-first"
+              title="刪除單字"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
           )}
-        </button>
+          <button
+            onClick={() => onToggleSave(word.id)}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            {word.isSaved ? (
+              <BookmarkCheck className="w-6 h-6 text-yellow-500 fill-yellow-500" />
+            ) : (
+              <Bookmark className="w-6 h-6 text-gray-300" />
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 pt-4 border-t border-gray-50">
@@ -60,13 +72,13 @@ const WordCard: React.FC<WordCardProps> = ({ word, onToggleSave, showConjugation
 
       {word.type === 'verb' && word.conjugations && (
         <div className="mt-4">
-          <button 
+          <button
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider"
           >
             時態變化 {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
-          
+
           {expanded && (
             <div className="mt-2 grid grid-cols-2 gap-2 bg-indigo-50 p-3 rounded-xl text-sm">
               <div><span className="text-gray-500 block">辭書型</span><span className="japanese-text font-medium">{word.conjugations.dictionary}</span></div>
