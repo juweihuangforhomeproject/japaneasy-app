@@ -268,7 +268,10 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col relative pb-24 shadow-2xl">
-      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md px-6 py-4 flex justify-between items-center border-b border-gray-100">
+      <header 
+        className="sticky top-0 z-20 bg-white/90 backdrop-blur-md px-6 pb-4 flex justify-between items-center border-b border-gray-100"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+      >
         <div className="flex flex-col">
           <button onClick={() => setActiveView('home')} className="text-xl font-black text-indigo-900 tracking-tighter flex items-center gap-2 hover:opacity-70 transition-opacity">
             <BrainCircuit className="w-6 h-6 text-indigo-600" />
