@@ -9,8 +9,8 @@ const supabaseUrl = 'https://bguiuhcqvlgqtpdlxebl.supabase.co'; // 已修復空�
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndWl1aGNxdmxncXRwZGx4ZWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUzMzEsImV4cCI6MjA4NDQ4MTMzMX0.iNLCPHZG8LbBiEUzKK7JnZaja2i-BBiTVrhkMGXpOuI';
 // ==========================================
 
-export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey) 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
+export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
 export const supabaseService = {
@@ -39,9 +39,9 @@ export const supabaseService = {
       .select('*')
       .eq('user_id', user.id)
       .order('added_at', { ascending: false });
-    
+
     if (error) throw error;
-    
+
     return (data || []).map(d => ({
       ...d,
       exampleFurigana: d.example_furigana,
@@ -85,9 +85,9 @@ export const supabaseService = {
       .select('*')
       .eq('user_id', user.id)
       .order('added_at', { ascending: false });
-    
+
     if (error) throw error;
-    
+
     return (data || []).map(d => ({
       ...d,
       addedAt: d.added_at
@@ -108,6 +108,20 @@ export const supabaseService = {
       added_at: grammar.addedAt,
       rating: grammar.rating
     });
+    if (error) throw error;
+  },
+
+  async deleteGrammar(id: string) {
+    if (!supabase) return;
+    const user = await this.getCurrentUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('grammar_points')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
     if (error) throw error;
   }
 };

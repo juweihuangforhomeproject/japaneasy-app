@@ -28,7 +28,8 @@ import {
   Mail,
   Lock,
   Calendar,
-  Bookmark
+  Bookmark,
+  Trash2
 } from 'lucide-react';
 import WordCard from './components/WordCard';
 
@@ -212,6 +213,19 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteGrammar = async (id: string) => {
+    if (window.confirm('確定要刪除這個語法重點嗎？')) {
+      const grammar = grammarLibrary.find(g => g.id === id);
+      if (grammar) {
+        setGrammarLibrary(prev => prev.filter(g => g.id !== id));
+        await db.deleteGrammar(id);
+        if (currentUser) {
+          supabaseService.deleteGrammar(id).catch(e => console.error("雲端刪除失敗", e));
+        }
+      }
+    }
+  };
+
   const updateMastery = async (id: string, direction: 'known' | 'unknown') => {
     const word = library.find(w => w.id === id);
     if (word) {
@@ -290,6 +304,7 @@ const App: React.FC = () => {
               <GrammarLibraryView
                 grammarItems={grammarLibrary}
                 onUpdateRating={updateGrammarRating}
+                onDelete={handleDeleteGrammar}
               />
             )}
             {activeView === 'results' && currentResult && (
@@ -406,7 +421,7 @@ const LibraryView = ({ library, filter, setFilter, onToggleSave }: any) => {
   );
 };
 
-const GrammarLibraryView = ({ grammarItems, onUpdateRating }: any) => (
+const GrammarLibraryView = ({ grammarItems, onUpdateRating, onDelete }: any) => (
   <div className="space-y-6 animate-in fade-in duration-500">
     <h2 className="text-xl font-bold flex items-center gap-2">
       <ScrollText className="w-6 h-6 text-indigo-600" />
@@ -414,9 +429,9 @@ const GrammarLibraryView = ({ grammarItems, onUpdateRating }: any) => (
     </h2>
     <div className="grid gap-4">
       {grammarItems.map((item: any) => (
-        <div key={item.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div key={item.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 group relative">
           <div className="flex justify-between items-start mb-4">
-            <h3 className="text-lg font-bold text-indigo-600 japanese-text">{item.point}</h3>
+            <h3 className="text-lg font-bold text-indigo-600 japanese-text pr-8">{item.point}</h3>
             <div className="flex gap-0.5">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button key={star} onClick={() => onUpdateRating(item.id, star)}>
@@ -425,6 +440,13 @@ const GrammarLibraryView = ({ grammarItems, onUpdateRating }: any) => (
               ))}
             </div>
           </div>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="absolute top-6 right-2 p-2 bg-gray-50 text-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:text-red-500"
+            title="刪除"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
           <p className="text-gray-700 text-sm leading-relaxed mb-4 bg-gray-50 p-4 rounded-xl">{item.explanation}</p>
           <div className="border-t border-gray-50 pt-4">
             <p className="text-[10px] uppercase font-bold text-gray-400 mb-1 tracking-widest">範例</p>
