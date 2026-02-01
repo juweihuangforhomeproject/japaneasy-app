@@ -268,7 +268,7 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col relative pb-24 shadow-2xl">
-      <header 
+      <header
         className="sticky top-0 z-20 bg-white/90 backdrop-blur-md px-6 pb-4 flex justify-between items-center border-b border-gray-100"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
       >
@@ -351,7 +351,10 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-gray-100 px-6 py-3 flex justify-between items-center z-30">
+      <nav
+        className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-gray-100 px-6 pt-3 flex justify-between items-center z-30"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+      >
         <NavItem icon={<BookOpen />} label="單字庫" active={activeView === 'library' || activeView === 'results'} onClick={() => setActiveView('library')} />
         <NavItem icon={<Layers />} label="閃卡" active={activeView === 'flashcards'} onClick={() => setActiveView('flashcards')} />
         <div className="relative -top-8">
